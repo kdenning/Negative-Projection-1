@@ -1,0 +1,500 @@
+---
+title: "Initial Study - Negative Projection"
+author: "Kathryn Denning"
+date: "Originally analyzed Fall 2017 - Updated for publication December 2019"
+output: 
+  html_document:
+    code_folding: "hide"
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include = FALSE}
+#loading packages
+library(foreign)
+library(reshape2)
+library(tidyverse)
+library(dplyr)
+library(car)
+library(haven)
+library(psych)
+library(lmerTest)
+library(sjPlot)
+library(reshape2)
+library(data.table)
+library(emmeans)
+library(effects)
+
+#making it round to three decimal places
+options(scipen = 999)
+
+#Setting global chunk options
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+
+#importing the data
+wide_data <- Import("ppt1_fulldata_ptcleanedonly.xlsx") 
+
+#dropping the longer description of each question
+wide_dropped1 <- wide_data[-c(1),,drop = F] 
+```
+
+```{r data cleaning, include = FALSE}
+#Data cleaning
+clean_data <- wide_dropped1 %>% 
+  ## drop two MFQ items that aren't actually the survey - 6, 22 in each
+select(-MFQSelf_6, -MFQSelf_22, -MFQTrump_6, -MFQTrump_22, -MFQClin_6,
+       -MFQClin_22, -MFQTarg_6, -MFQTarg_22) %>% 
+  ## dropping PANAS and exploratory items for this study to make data more manageable
+  select(-c(PANAS1_1:PANAS1_20, PANAS2_1:PANAS2_20, WilltoDiscuss:Liking, 
+            gender_writein, race_writein, birth_writein, race_writein, 
+            language_writein, raise_writein)) %>% 
+  mutate_if(is.factor, as.numeric) %>% 
+  ### Wrangling data to get MFQ for self, MFQ to targ, MFQ for stereotype, column for candidate, average of IG identification
+  gather("MFQ_Type", "MFQ_Score", MFQSelf_1:MFQTarg_32) %>% 
+  separate(.,MFQ_Type, c("MFQ_Type", "MFQ_Number"),"\\_") %>% 
+  spread(MFQ_Type, MFQ_Score) %>% 
+  gather("IG_Type", "IG_Score", IG_Clin_1:IG_Trump_14) %>% 
+  separate(.,IG_Type, c("Drop", "IG_Type", "IG_Number"),"\\_") %>% 
+  filter(!is.na(IG_Score)) %>% 
+  group_by(subid) %>% 
+  #average of ingroup-identification for each subjut
+    mutate(IG_ave = mean(IG_Score)) %>% 
+  filter(!is.na(IG_ave)) %>% 
+  select(-Drop) %>% 
+  #making candidate they voted for a factor
+  mutate(Cand_votedfor = ifelse(IG_Type == "Clin", 1, 
+                                ifelse(IG_Type == "Trump", 0, NA))) %>% 
+  gather("Day_key", "Day_content", Day_Clin_In_PT:Day_Trump_In_C) %>% 
+  mutate(Day_key = as.factor(Day_key)) %>% 
+  filter(!is.na(Day_content)) %>% 
+  mutate(inoutgroup = fct_collapse(Day_key, 
+                                   Ingroup = c("Day_Clin_In_C", 
+                                                "Day_Clin_In_PT", 
+                                                "Day_Trump_In_C", 
+                                                "Day_Trump_In_PT"), 
+                                   Outgroup = c("Day_Clin_Out_C", 
+                                                "Day_Clin_Out_PT",
+                                                "Day_Trump_Out_C", 
+                                                "Day_Trump_Out_PT")),
+         PT = fct_collapse(Day_key,
+                           PT = c("Day_Clin_In_PT",
+                                  "Day_Trump_In_PT",
+                                  "Day_Clin_Out_PT",
+                                  "Day_Trump_Out_PT"),
+                           control = c("Day_Clin_In_C",
+                                       "Day_Trump_In_C",
+                                       "Day_Clin_Out_C",
+                                       "Day_Trump_Out_C")),
+         par_cand = fct_collapse(Day_key,
+                                  Clinton = c("Day_Clin_In_PT",
+                                           "Day_Clin_Out_PT",
+                                           "Day_Clin_In_C",
+                                           "Day_Clin_Out_C"),
+                                  Trump = c("Day_Trump_In_PT",
+                                            "Day_Trump_Out_PT",
+                                            "Day_Trump_In_C",
+                                            "Day_Trump_Out_C")),
+         targ_cand = fct_collapse(Day_key,
+                                  Clinton = c("Day_Clin_In_PT",
+                                              "Day_Clin_In_C",
+                                              "Day_Trump_Out_PT",
+                                              "Day_Trump_Out_C"),
+                                  Trump = c("Day_Clin_Out_PT",
+                                            "Day_Clin_Out_C",
+                                            "Day_Trump_In_PT",
+                                            "Day_Trump_In_C"))) %>% 
+  #effects coding for group with ingroup = .5 and outgorup = -.5, for PT .5 = PT and Control = -.5
+  mutate(inoutgroup_effects = ifelse(inoutgroup == "Ingroup", .5,
+                                     ifelse(inoutgroup == "Outgroup", -.5, NA)),
+         PT_effects = ifelse(PT == "PT", .5, 
+                             ifelse(PT == "control", -.5, NA)),
+         targ_cand = ifelse(targ_cand == "Clinton", 1, 
+                            ifelse(targ_cand == "Trump", 2, NA))) %>% 
+  #grand mean centering MFQ for self
+  mutate(MFQSelf_c = MFQSelf - mean(MFQSelf)) %>%  
+  #removing people who failed the manipulation check
+  filter(targ_cand == 1 & Man_TargVote == 1 | 
+           targ_cand == 2 & Man_TargVote == 2) %>%
+  select(-Day_content, -Day_key) %>% 
+  #effects coding candidate
+  mutate(Targ_Cand_effectscoded = ifelse(targ_cand == "1", .5, 
+                                         ifelse(targ_cand == "2", -.5, NA)))
+
+#for some reason, this wouldn't work in the piping above, so had to hard code it
+#grand mean centering for ingroup identification
+clean_data$ident_c <- clean_data$IG_ave - mean(clean_data$IG_ave, na.rm = TRUE)
+clean_data$Gender <- as.factor(clean_data$Gender)
+levels(clean_data$Gender) <- c("Male", "Female", "Other")
+clean_data$Race <- as.factor(clean_data$Race)
+levels(clean_data$Race) <- c("American Indian/Native Alaskan", 
+                             "Asian", 
+                             "Black",
+                             "Latinx",
+                             "Middle Eastern",
+                             "Caucasian",
+                             "Multiracial",
+                             "Other")
+
+#data with just the variables for the analysis
+clean2 <- clean_data %>% 
+  select(subid, MFQ_Number, MFQSelf_c, MFQTarg, ident_c, PT_effects, 
+         inoutgroup_effects, Man_PT) %>%
+  unique()
+```
+
+# Demographics
+
+## Number of people in ingroup/outgroup conditions
+
+```{r descrip n in conditions}
+clean_data %>% 
+  select(subid, inoutgroup) %>% 
+  na.omit() %>% 
+  unique() %>% 
+  group_by(inoutgroup) %>% 
+  count()
+```
+
+## Number of participants with demographic information
+
+```{r n reported dem info}
+dem <- clean_data %>% 
+  select(subid, MFQ_Number, MFQSelf_c, MFQTarg, ident_c, PT_effects, 
+         inoutgroup_effects, Gender, Race, Age, Edu_Part) %>%   
+  na.omit %>% 
+  unique()
+
+dem %>% 
+  select(subid) %>% 
+  unique() %>% 
+  nrow()
+```
+
+## Gender
+
+```{r gender}
+dem %>% 
+  select(subid, Gender) %>% 
+  unique() %>% 
+  na.omit() %>% 
+  group_by(Gender) %>% 
+  count()
+```
+
+## Race
+
+```{r race}
+dem %>% 
+  select(subid, Race) %>% 
+  unique() %>% 
+  group_by((Race)) %>% 
+  count()
+```
+
+#### Caucasian percentage
+
+```{r white}
+white <- (530/677)*100
+white
+```
+
+#### Black percentage
+
+```{r black}
+black <- (42/677)*100
+black
+```
+
+#### Asian percentage
+
+```{r asian}
+asian <- (36/677)*100
+asian
+```
+
+#### Latinx percentage
+
+```{r latinx}
+latinx <- (33/677)*100
+latinx
+```
+
+#### Multiracial percentage
+
+```{r}
+multi <- (28/677)*100
+multi
+```
+
+#### American Indian/ Alaska Native percentage
+
+```{r american indian alaskan}
+americanindian_alaskan <- (4/677)*100
+americanindian_alaskan 
+```
+
+#### Percentage identified as "Other"
+
+```{r other}
+other <- (3/677)*100
+other
+```
+
+#### Middle Eastern percentage
+
+```{r middle eastern}
+middleeast <- (1/677)*100
+middleeast
+```
+
+## Age
+
+```{r age}
+dem %>% 
+  summarize(mean(Age)) %>% 
+  summarize(mean = mean(`mean(Age)`),
+            sd = sd(`mean(Age)`))
+```
+
+## Education
+
+```{r education}
+dem %>% 
+  select(subid, Edu_Part) %>% 
+  unique() %>% 
+  group_by((Edu_Part)) %>% 
+  count()
+
+somecollege <- ((149+90+214+32+94+31)/677)*100
+somecollege
+```
+
+# Model Results
+
+```{r model results}
+#model
+Model_Pro_random_effects <- lmer(MFQTarg ~ MFQSelf_c * inoutgroup_effects * 
+                                   PT_effects * ident_c + (MFQSelf_c|subid), 
+                                 data = clean2)
+
+#results
+tab_model(Model_Pro_random_effects,
+          title = "Projection")
+```
+
+# Plots of sig. effects
+
+## Interaction between in-group identification and group membership
+
+```{r three-way plot set-up, include = FALSE}
+# getting the information for the plot from the model in the correct format
+describe(clean2$ident_c)
+describe(clean2$inoutgroup_effects)
+
+effects_threeway <- effect(term = "MFQSelf_c:inoutgroup_effects:ident_c", 
+                           xlevels = list(ident_c = c(-1.42, 0, 1.42), 
+                                         inoutgroup_effects = c(-.5,.5)), 
+                           mod = Model_Pro_random_effects)
+
+effects_threeway <- as.data.frame(effects_threeway)
+
+effects_threeway$Group <- as.factor(effects_threeway$inoutgroup_effects)
+effects_threeway$Identification <- as.factor(effects_threeway$ident_c)
+
+ident_label <- c("-1.42" = "Low Identification \n (1 SD Below)", 
+                 "0" = "Average Identification",
+                 "1.42" = "High Identificatiion \n(1 SD Above)")
+```
+
+```{r three-way plot color}
+ggplot(effects_threeway, aes(MFQSelf_c, 
+                             fit, 
+                             group = Group, 
+                             color = Group)) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~Identification, labeller = 
+               labeller(Identification = ident_label)) +
+  scale_color_discrete("Group", breaks = c(-.5, .5), 
+                       labels = c("Out-group", "In-group")) +
+  theme_minimal() +
+  labs(title = "Projection predicted by in-group identification and group membership",
+       x = "MFQ ratings for self",
+       y = "MFQ ratings for target")
+```
+
+```{r three-way plot BW}
+ggplot(effects_threeway, aes(MFQSelf_c, 
+                             fit, 
+                             group = Group, 
+                             color = Group)) +
+  geom_smooth(method = "lm", se = FALSE, size = .7, colour="black", 
+              aes(linetype = Group)) +
+  facet_wrap(~Identification, labeller = 
+               labeller(Identification = ident_label)) +
+  scale_linetype_manual("Group", breaks = c(-.5, .5), 
+                       labels = c("Out-group", "In-group"),
+                       values = c("solid", 
+                                   "dashed")) +
+  theme_minimal() +
+  labs(title = "Projection predicted by in-group identification and group membership",
+       x = "MFQ ratings for self",
+       y = "MFQ ratings for target")
+```
+
+## Main effect of ingroup identification
+
+```{r main effect ident plot set-up, include = FALSE}
+#information for plot of main effect of in-group identification
+effects_ident_main <- effect(term = "MFQSelf_c:ident_c", 
+                             xlevels = list(ident_c = c(-1.42, 0, 1.42)), 
+                             mod = Model_Pro_random_effects)
+
+effects_ident_main <- as.data.frame(effects_ident_main)
+
+effects_ident_main$Identification <- as.factor(effects_ident_main$ident_c)
+```
+
+```{r main effect ident plot}
+ggplot(effects_ident_main, aes(MFQSelf_c, 
+                               fit, 
+                               group = Identification, 
+                               color = Identification)) +
+  geom_smooth(method = "lm") +
+  scale_color_discrete("Identification", breaks = c(-1.42, 0, 1.42), 
+                       labels = c("Weak Identification \n (1 SD Below)", 
+                                  "Average Identification", 
+                                  "High Identification \n (1 SD above)")) +
+  theme_minimal() +
+  labs(title = "Projection predicted by degree of in-group identification",
+       x = "MFQ ratings for self",
+       y = "MFQ ratings for target")
+```
+
+```{r main effect ident plot BW}
+ggplot(effects_ident_main, aes(MFQSelf_c, 
+                               fit, 
+                               group = Identification, 
+                               color = Identification)) +
+  geom_smooth(method = "lm", se = FALSE, size = .7, colour = "black",
+              aes(linetype = Identification)) +
+  scale_linetype_manual("Identification", breaks = c(-1.42, 0, 1.42), 
+                       labels = c("Weak Identification \n (1 SD Below)", 
+                                  "Average Identification", 
+                                  "High Identification \n (1 SD above)"),
+                       values = c("solid", 
+                                   "dotted", 
+                                   "dashed")) +
+  theme_minimal() +
+  labs(title = "Projection predicted by degree of in-group identification",
+       x = "MFQ ratings for self",
+       y = "MFQ ratings for target")
+```
+
+## Main effect of group membership
+
+```{r main effect group plot set-up, include = FALSE}
+# getting the information for the main effect of group
+effects_main_group <- effect(term = "MFQSelf_c:inoutgroup_effects", 
+                             xlevels = list(inoutgroup_effects = c(-.5,.5)), 
+                             mod = Model_Pro_random_effects)
+
+effects_main_group <- as.data.frame(effects_main_group)
+
+effects_main_group$Group <- as.factor(effects_main_group$inoutgroup_effects)
+```
+
+```{r main effect group plot color}
+ggplot(effects_main_group, aes(MFQSelf_c, 
+                               fit, 
+                               group = Group, 
+                               color = Group)) +
+  geom_smooth(method = "lm") +
+  scale_color_discrete("Group", breaks = c(-.5, .5), 
+                       labels = c("Out-group", "In-group")) +
+  theme_minimal() +
+  labs(title = "Projection predicted by group membership",
+       x = "MFQ ratings for self",
+       y = "MFQ ratings for target")
+```
+
+```{r main effect group plot BW}
+ggplot(effects_main_group, aes(MFQSelf_c, 
+                               fit, 
+                               group = Group, 
+                               color = Group)) +
+  geom_smooth(method = "lm", se = FALSE, size = .7, colour = "black",
+              aes(linetype = Group)) +
+  scale_linetype_manual("Group", breaks = c(-.5, .5), 
+                       labels = c("Out-group", "In-group"),
+                       values = c("solid", 
+                                  "dashed")) +
+  theme_minimal() +
+  labs(title = "Projection predicted by group membership",
+       x = "MFQ ratings for self",
+       y = "MFQ ratings for target")
+```
+
+# Alpha for in-group identification
+
+```{r alpha for identification}
+ir_ident <- clean_data %>% 
+  select(subid, IG_Number, IG_Score) %>% 
+  na.omit() %>% 
+  unique() %>% 
+  spread(IG_Number, IG_Score)
+
+ir_ident <- subset(ir_ident, select = -c(subid))
+
+alpha(ir_ident)
+```
+
+# Checking if out-group is significantly different from 0
+
+```{r out diff from zero, echo=FALSE}
+#model
+model_outgroup <- lmer(MFQTarg ~ MFQSelf_c * inoutgroup_effects * PT_effects * 
+                         ident_c + (MFQSelf_c|subid), 
+                       data = clean2, 
+                       na.rm = TRUE, 
+                       subset = (clean2$inoutgroup_effects == -0.5))
+
+#results
+tab_model(model_outgroup,
+          title = "Projection")
+
+#rank deficient so can't include it because doesn't include all the comparisons
+```
+
+# Checking if in-group is significantly different from 0
+
+```{r in diff from zero, echo=FALSE}
+#model
+model_ingroup <- lmer(MFQTarg ~ MFQSelf_c * inoutgroup_effects * PT_effects * 
+                        ident_c + (MFQSelf_c|subid), data = clean2, na.rm = TRUE, 
+                      subset = (clean2$inoutgroup_effects == 0.5))
+
+#results
+tab_model(model_ingroup,
+          title = "Projection")
+
+#rank deficient so can't include it because doesn't include all the comparisons
+```
+
+# Perspective taking manipulation check
+
+```{r pt manipulation check, echo=FALSE}
+#PT manipulation check
+mancheck_pt <- lm(Man_PT ~ PT_effects, data = clean2)
+summary(mancheck_pt)
+confint(mancheck_pt)
+
+# -.5 is control, .5 is PT
+mancheck_pt_descrip <-summary(lsmeans(mancheck_pt,~PT_effects, 
+                                      at = list(PT_effects = c(-.5,.5))))
+mancheck_pt_descrip
+
+ggplot(mancheck_pt_descrip , aes(x = PT_effects, y = lsmean))+
+  geom_col()
+```
