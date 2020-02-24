@@ -33,16 +33,40 @@ knitr::opts_chunk$set(echo = TRUE,
                       message = FALSE,
                       warning = FALSE)
 
-#importing the data
+#importing data with IP address and lat/long to look for MTurk bots
+bot_check <- Import("ppt1_with lat long to check bots.csv") 
+
+bot_check <- bot_check[-c(1,2),,drop = F] 
+
+#importing the data that has been reviewed for completion of PT task
 wide_data <- Import("ppt1_fulldata_ptcleanedonly.xlsx") 
 
 #dropping the longer description of each question
 wide_dropped1 <- wide_data[-c(1),,drop = F] 
 ```
 
+```{r, include = FALSE}
+#removing repeat IP addresses since those often indicate bots
+#getting a dataset with only subid and IPAdress
+ip <- bot_check %>% 
+  select(subid, IPAddress)
+
+#identifying the repeat IP addresses
+repeat_ips <- ip$IPAddress[duplicated(ip$IPAddress)]
+
+#getting the corresponding subids
+bot_check %>% 
+  select(subid, IPAddress, LocationLatitude, LocationLongitude) %>% 
+  filter(IPAddress %in% c("24.241.223.182", "72.79.119.56", "108.230.124.237", "172.97.7.163", "67.236.228.7", "68.190.36.43"))
+
+#removing the subids from the overall dataset that has already been cleaned to remove people who did not correctly complete the PT narrative task
+no_bots <- wide_data %>% 
+  filter(!subid %in% c(96, 99, 166, 167, 171, 239, 265, 345, 613, 758, 778, 779))
+```
+
 ```{r data cleaning, include = FALSE}
 #Data cleaning
-clean_data <- wide_dropped1 %>% 
+clean_data <- no_bots %>% 
   ## drop two MFQ items that aren't actually the survey - 6, 22 in each
 select(-MFQSelf_6, -MFQSelf_22, -MFQTrump_6, -MFQTrump_22, -MFQClin_6,
        -MFQClin_22, -MFQTarg_6, -MFQTarg_22) %>% 
@@ -190,63 +214,15 @@ dem %>%
   select(subid, Race) %>% 
   unique() %>% 
   group_by((Race)) %>% 
-  count()
+  count() %>% 
+  mutate(percent = n/668*100)
 ```
 
 #### Caucasian percentage
 
 ```{r white}
-white <- (530/677)*100
+white <- (523/668)*100
 white
-```
-
-#### Black percentage
-
-```{r black}
-black <- (42/677)*100
-black
-```
-
-#### Asian percentage
-
-```{r asian}
-asian <- (36/677)*100
-asian
-```
-
-#### Latinx percentage
-
-```{r latinx}
-latinx <- (33/677)*100
-latinx
-```
-
-#### Multiracial percentage
-
-```{r}
-multi <- (28/677)*100
-multi
-```
-
-#### American Indian/ Alaska Native percentage
-
-```{r american indian alaskan}
-americanindian_alaskan <- (4/677)*100
-americanindian_alaskan 
-```
-
-#### Percentage identified as "Other"
-
-```{r other}
-other <- (3/677)*100
-other
-```
-
-#### Middle Eastern percentage
-
-```{r middle eastern}
-middleeast <- (1/677)*100
-middleeast
 ```
 
 ## Age
@@ -267,7 +243,7 @@ dem %>%
   group_by((Edu_Part)) %>% 
   count()
 
-somecollege <- ((149+90+214+32+94+31)/677)*100
+somecollege <- ((147+90+208+32+93+31)/668)*100
 somecollege
 ```
 
