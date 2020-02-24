@@ -279,9 +279,9 @@ effects_threeway <- as.data.frame(effects_threeway)
 effects_threeway$Group <- as.factor(effects_threeway$inoutgroup_effects)
 effects_threeway$Identification <- as.factor(effects_threeway$ident_c)
 
-ident_label <- c("-1.42" = "Low Identification \n (1 SD Below)", 
-                 "0" = "Average Identification",
-                 "1.42" = "High Identificatiion \n(1 SD Above)")
+ident_label <- c("-1.42" = "Low identification \n (1 SD below)", 
+                 "0" = "Average identification",
+                 "1.42" = "High identificatiion \n(1 SD above)")
 ```
 
 ```{r three-way plot color}
@@ -296,8 +296,8 @@ ggplot(effects_threeway, aes(MFQSelf_c,
                        labels = c("Out-group", "In-group")) +
   theme_minimal() +
   labs(title = "Projection predicted by in-group identification and group membership",
-       x = "MFQ ratings for self",
-       y = "MFQ ratings for target")
+       x = "MFQ responses for self",
+       y = "MFQ responses for target")
 ```
 
 ```{r three-way plot BW}
@@ -315,8 +315,8 @@ ggplot(effects_threeway, aes(MFQSelf_c,
                                    "dashed")) +
   theme_minimal() +
   labs(title = "Projection predicted by in-group identification and group membership",
-       x = "MFQ ratings for self",
-       y = "MFQ ratings for target")
+       x = "MFQ responses for self",
+       y = "MFQ responses for target")
 ```
 
 ## Main effect of ingroup identification
@@ -339,13 +339,13 @@ ggplot(effects_ident_main, aes(MFQSelf_c,
                                color = Identification)) +
   geom_smooth(method = "lm") +
   scale_color_discrete("Identification", breaks = c(-1.42, 0, 1.42), 
-                       labels = c("Weak Identification \n (1 SD Below)", 
-                                  "Average Identification", 
-                                  "High Identification \n (1 SD above)")) +
+                       labels = c("Weak identification \n (1 SD below)", 
+                                  "Average identification", 
+                                  "High identification \n (1 SD above)")) +
   theme_minimal() +
   labs(title = "Projection predicted by degree of in-group identification",
-       x = "MFQ ratings for self",
-       y = "MFQ ratings for target")
+       x = "MFQ respones for self",
+       y = "MFQ responses for target")
 ```
 
 ```{r main effect ident plot BW}
@@ -356,16 +356,16 @@ ggplot(effects_ident_main, aes(MFQSelf_c,
   geom_smooth(method = "lm", se = FALSE, size = .7, colour = "black",
               aes(linetype = Identification)) +
   scale_linetype_manual("Identification", breaks = c(-1.42, 0, 1.42), 
-                       labels = c("Weak Identification \n (1 SD Below)", 
-                                  "Average Identification", 
-                                  "High Identification \n (1 SD above)"),
+                       labels = c("Weak identification \n (1 SD below)", 
+                                  "Average identification", 
+                                  "High identification \n (1 SD above)"),
                        values = c("solid", 
                                    "dotted", 
                                    "dashed")) +
   theme_minimal() +
   labs(title = "Projection predicted by degree of in-group identification",
-       x = "MFQ ratings for self",
-       y = "MFQ ratings for target")
+       x = "MFQ respones for self",
+       y = "MFQ responses for target")
 ```
 
 ## Main effect of group membership
@@ -391,8 +391,8 @@ ggplot(effects_main_group, aes(MFQSelf_c,
                        labels = c("Out-group", "In-group")) +
   theme_minimal() +
   labs(title = "Projection predicted by group membership",
-       x = "MFQ ratings for self",
-       y = "MFQ ratings for target")
+       x = "MFQ responses for self",
+       y = "MFQ responses for target")
 ```
 
 ```{r main effect group plot BW}
@@ -408,8 +408,8 @@ ggplot(effects_main_group, aes(MFQSelf_c,
                                   "dashed")) +
   theme_minimal() +
   labs(title = "Projection predicted by group membership",
-       x = "MFQ ratings for self",
-       y = "MFQ ratings for target")
+       x = "MFQ responses for self",
+       y = "MFQ responses for target")
 ```
 
 # Alpha for in-group identification
