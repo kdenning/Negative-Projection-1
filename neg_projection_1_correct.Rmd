@@ -3,14 +3,13 @@ title: "Initial Study - Negative Projection"
 author: "Kathryn Denning"
 date: "Originally analyzed Fall 2017 - Updated for publication December 2019"
 output: 
-  html_document:
-    code_folding: "hide"
-    toc: true
-    toc_float: true
-    dev: png
-  pdf_document:
-    dev: cairo_pdf
-    latex_engine: xelatex
+    html_document:
+      code_download: TRUE
+      toc: TRUE
+      toc_float:
+        collapsed: FALSE
+      toc_depth: 1
+      code_folding: hide
 editor_options: 
   chunk_output_type: console
 ---
@@ -71,6 +70,9 @@ bot_check %>%
 #removing the subids from the overall dataset that has already been cleaned to remove people who did not correctly complete the PT narrative task
 no_bots <- wide_data %>% 
   filter(!subid %in% c(96, 99, 166, 167, 171, 239, 265, 345, 613, 758, 778, 779))
+
+# Drop row of question labels
+no_bots <- no_bots[-c(1),]
 ```
 
 ```{r data cleaning, include = FALSE}
@@ -83,23 +85,26 @@ select(-MFQSelf_6, -MFQSelf_22, -MFQTrump_6, -MFQTrump_22, -MFQClin_6,
   select(-c(PANAS1_1:PANAS1_20, PANAS2_1:PANAS2_20, WilltoDiscuss:Liking, 
             gender_writein, race_writein, birth_writein, race_writein, 
             language_writein, raise_writein)) %>% 
-  mutate_if(is.factor, as.numeric) %>% 
   ### Wrangling data to get MFQ for self, MFQ to targ, MFQ for stereotype, column for candidate, average of IG identification
-  gather("MFQ_Type", "MFQ_Score", MFQSelf_1:MFQTarg_32) %>% 
-  separate(.,MFQ_Type, c("MFQ_Type", "MFQ_Number"),"\\_") %>% 
-  spread(MFQ_Type, MFQ_Score) %>% 
-  gather("IG_Type", "IG_Score", IG_Clin_1:IG_Trump_14) %>% 
-  separate(.,IG_Type, c("Drop", "IG_Type", "IG_Number"),"\\_") %>% 
-  filter(!is.na(IG_Score)) %>% 
-  group_by(subid) %>% 
-  #average of ingroup-identification for each subjut
-    mutate(IG_ave = mean(IG_Score)) %>% 
-  filter(!is.na(IG_ave)) %>% 
-  select(-Drop) %>% 
+  pivot_longer(c(MFQSelf_1:MFQSelf_32,
+                 MFQTrump_1:MFQTrump_32,
+                 MFQClin_1:MFQClin_32,
+                 MFQTarg_1:MFQTarg_32),
+               names_sep = "_",
+               names_to = c("mfq_type", "MFQ_Number")) %>% 
+  pivot_wider(names_from = mfq_type, values_from = value) %>% 
+  pivot_longer(IG_Clin_1:IG_Trump_14,
+               names_sep = "_",
+               names_to = c("ident", "ident_targ", "ident_num")) %>% 
+  pivot_wider(names_from = ident, values_from = value) %>% 
+  rename(ident = IG) %>% 
+  filter(!is.na(ident)) %>% 
   #making candidate they voted for a factor
-  mutate(Cand_votedfor = ifelse(IG_Type == "Clin", 1, 
-                                ifelse(IG_Type == "Trump", 0, NA))) %>% 
-  gather("Day_key", "Day_content", Day_Clin_In_PT:Day_Trump_In_C) %>% 
+  mutate(Cand_votedfor = ifelse(ident_targ == "Clin", 1, 
+                                ifelse(ident_targ == "Trump", 0, NA))) %>% 
+  pivot_longer(Day_Clin_In_PT:Day_Trump_In_C,
+               names_to = c("Day_key")) %>% 
+  rename(Day_content = value) %>% 
   mutate(Day_key = as.factor(Day_key)) %>% 
   filter(!is.na(Day_content)) %>% 
   mutate(inoutgroup = fct_collapse(Day_key, 
@@ -137,7 +142,13 @@ select(-MFQSelf_6, -MFQSelf_22, -MFQTrump_6, -MFQTrump_22, -MFQClin_6,
                                   Trump = c("Day_Clin_Out_PT",
                                             "Day_Clin_Out_C",
                                             "Day_Trump_In_PT",
-                                            "Day_Trump_In_C"))) %>% 
+                                            "Day_Trump_In_C")))
+
+clean_data[,1:26] <- sapply(clean_data[,1:26],as.numeric)
+clean_data[,28:30] <- sapply(clean_data[,28:30],as.numeric)
+
+  #average of ingroup-identification for each subjut
+clean_data2 <- clean_data %>% 
   #effects coding for group with ingroup = .5 and outgorup = -.5, for PT .5 = PT and Control = -.5
   mutate(inoutgroup_effects = ifelse(inoutgroup == "Ingroup", .5,
                                      ifelse(inoutgroup == "Outgroup", -.5, NA)),
@@ -146,22 +157,25 @@ select(-MFQSelf_6, -MFQSelf_22, -MFQTrump_6, -MFQTrump_22, -MFQClin_6,
          targ_cand = ifelse(targ_cand == "Clinton", 1, 
                             ifelse(targ_cand == "Trump", 2, NA))) %>% 
   #grand mean centering MFQ for self
-  mutate(MFQSelf_c = MFQSelf - mean(MFQSelf)) %>%  
+  mutate(MFQSelf_c = MFQSelf - mean(MFQSelf, na.rm = TRUE)) %>%  
   #removing people who failed the manipulation check
   filter(targ_cand == 1 & Man_TargVote == 1 | 
            targ_cand == 2 & Man_TargVote == 2) %>%
   select(-Day_content, -Day_key) %>% 
   #effects coding candidate
   mutate(Targ_Cand_effectscoded = ifelse(targ_cand == "1", .5, 
-                                         ifelse(targ_cand == "2", -.5, NA)))
+                                         ifelse(targ_cand == "2", -.5, NA))) %>% 
+  group_by(subid) %>% 
+  mutate(ident_subave = mean(ident)) %>% 
+  filter(!is.na(ident_subave))
 
 #for some reason, this wouldn't work in the piping above, so had to hard code it
 #grand mean centering for ingroup identification
-clean_data$ident_c <- clean_data$IG_ave - mean(clean_data$IG_ave, na.rm = TRUE)
-clean_data$Gender <- as.factor(clean_data$Gender)
-levels(clean_data$Gender) <- c("Male", "Female", "Other")
-clean_data$Race <- as.factor(clean_data$Race)
-levels(clean_data$Race) <- c("American Indian/Native Alaskan", 
+clean_data2$ident_c <- clean_data2$ident_subave - mean(clean_data2$ident_subave, na.rm = TRUE)
+clean_data2$Gender <- as.factor(clean_data2$Gender)
+levels(clean_data2$Gender) <- c("Male", "Female", "Other")
+clean_data2$Race <- as.factor(clean_data2$Race)
+levels(clean_data2$Race) <- c("American Indian/Native Alaskan", 
                              "Asian", 
                              "Black",
                              "Latinx",
@@ -169,20 +183,20 @@ levels(clean_data$Race) <- c("American Indian/Native Alaskan",
                              "Caucasian",
                              "Multiracial",
                              "Other")
-
 #data with just the variables for the analysis
-clean2 <- clean_data %>% 
+model_data <- clean_data2 %>% 
   select(subid, MFQ_Number, MFQSelf_c, MFQTarg, ident_c, PT_effects, 
-         inoutgroup_effects, Man_PT) %>%
-  unique()
+         inoutgroup_effects) %>%
+  unique() %>% 
+  na.omit()
 ```
 
-# Demographics
+# Demographics & Descriptives {.tabset .tabset-fade .tabset-pills}
 
-## Number of people in ingroup/outgroup conditions
+## N in in/outgroup conditions
 
 ```{r descrip n in conditions}
-clean_data %>% 
+clean_data2 %>% 
   select(subid, inoutgroup) %>% 
   na.omit() %>% 
   unique() %>% 
@@ -190,14 +204,14 @@ clean_data %>%
   count()
 ```
 
-## Number of participants with demographic information
+## N with demographic information
 
 ```{r n reported dem info}
-dem <- clean_data %>% 
+dem <- clean_data2 %>% 
   select(subid, MFQ_Number, MFQSelf_c, MFQTarg, ident_c, PT_effects, 
-         inoutgroup_effects, Gender, Race, Age, Edu_Part) %>%   
-  na.omit %>% 
-  unique()
+         inoutgroup_effects, Gender, Race, Age, Edu_Part) %>%  
+  unique %>% 
+  na.omit() 
 
 dem %>% 
   select(subid) %>% 
@@ -227,13 +241,6 @@ dem %>%
   mutate(percent = n/668*100)
 ```
 
-#### Caucasian percentage
-
-```{r white}
-white <- (523/668)*100
-white
-```
-
 ## Age
 
 ```{r age}
@@ -256,30 +263,156 @@ somecollege <- ((147+90+208+32+93+31)/668)*100
 somecollege
 ```
 
-# Model Results
+## Alpha MFQ Self
+
+### Overall
+
+```{r MFQ self overall}
+alpha_self <- clean_data2 %>% 
+  select(subid, MFQ_Number, MFQSelf) %>% 
+  unique() %>% 
+  na.omit() %>% 
+  pivot_wider(names_from = MFQ_Number, values_from = MFQSelf)
+
+alpha_self <- alpha_self[-1] 
+
+psych::alpha(alpha_self)
+```
+
+### Harm
+
+```{r harm alpha self}
+harm_self <- alpha_self %>% 
+  select(c("1", "7", "12", "17", "23", "28"))
+psych::alpha(harm_self)
+```
+
+### Fairness
+
+```{r fairness alpha self}
+fair_self <- alpha_self %>% 
+  select(c("2", "8", "13", "18", "24", "29"))
+psych::alpha(fair_self)
+```
+
+### Ingroup
+
+```{r ingroup alpha self}
+ingroup_self <- alpha_self %>% 
+  select(c("3", "9", "14", "25", "30"))
+psych::alpha(ingroup_self)
+```
+
+### Authority
+
+```{r authority alpha self}
+authority_self <- alpha_self %>% 
+  select(c("4", "10", "15", "26", "31"))
+psych::alpha(authority_self)
+```
+
+### Purity
+
+```{r purity alpha self}
+purity_self <- alpha_self %>% 
+  select(c("5", "11", "16", "27", "32"))
+psych::alpha(purity_self)
+```
+
+## Alpha MFQ Target
+
+### Overall
+
+```{r MFQ alpha targ overall}
+alpha_targ <- clean_data2 %>% 
+  select(subid, MFQ_Number, MFQTarg) %>% 
+  unique() %>% 
+  na.omit() %>% 
+  pivot_wider(names_from = MFQ_Number, values_from = MFQTarg)
+
+alpha_targ <- alpha_targ[-1] 
+
+psych::alpha(alpha_targ)
+```
+
+### Harm
+
+```{r harm alpha targ}
+harm_targ <- alpha_targ %>% 
+  select(c("1", "7", "12", "17", "23", "28"))
+psych::alpha(harm_targ)
+```
+
+### Fairness
+
+```{r fairness alpha targ}
+fair_targ <- alpha_targ %>% 
+  select(c("2", "8", "13", "18", "24", "29"))
+psych::alpha(fair_targ)
+```
+
+### Ingroup
+
+```{r ingroup alpha targ}
+ingroup_targ <- alpha_targ %>% 
+  select(c("3", "9", "14", "25", "30"))
+psych::alpha(ingroup_targ)
+```
+
+### Authority
+
+```{r authority alpha targ}
+authority_targ <- alpha_targ %>% 
+  select(c("4", "10", "15", "26", "31"))
+psych::alpha(authority_targ)
+```
+
+### Purity
+
+```{r purity alpha targ}
+purity_targ <- alpha_targ %>% 
+  select(c("5", "11", "16", "27", "32"))
+psych::alpha(purity_targ)
+```
+
+## Alpha for in-group identification
+
+```{r alpha for identification}
+ir_ident <- clean_data2 %>% 
+  select(subid, ident_num, ident) %>% 
+  na.omit() %>% 
+  unique() %>% 
+  spread(ident_num, ident)
+
+ir_ident <- subset(ir_ident, select = -c(subid))
+
+alpha(ir_ident)
+```
+
+# Model {.tabset .tabset-fade .tabset-pills}
+
+## Results
 
 ```{r model results}
 #model
 Model_Pro_random_effects <- lmer(MFQTarg ~ MFQSelf_c * inoutgroup_effects * 
                                    PT_effects * ident_c + (MFQSelf_c|subid), 
-                                 data = clean2)
+                                 data = model_data)
 
 #results
 tab_model(Model_Pro_random_effects,
           title = "Projection")
 ```
 
-# Plots of sig. effects
-
-## Interaction between in-group identification and group membership
+## Interaction plot: identification and group
 
 ```{r three-way plot set-up, include = FALSE}
 # getting the information for the plot from the model in the correct format
-describe(clean2$ident_c)
-describe(clean2$inoutgroup_effects)
+describe(model_data$ident_c)
+describe(model_data$inoutgroup_effects)
 
 effects_threeway <- effect(term = "MFQSelf_c:inoutgroup_effects:ident_c", 
-                           xlevels = list(ident_c = c(-1.42, 0, 1.42), 
+                           xlevels = list(ident_c = c(-1.8, 0, 1.8), 
                                          inoutgroup_effects = c(-.5,.5)), 
                            mod = Model_Pro_random_effects)
 
@@ -288,9 +421,9 @@ effects_threeway <- as.data.frame(effects_threeway)
 effects_threeway$Group <- as.factor(effects_threeway$inoutgroup_effects)
 effects_threeway$Identification <- as.factor(effects_threeway$ident_c)
 
-ident_label <- c("-1.42" = "Low identification \n (1 SD below)", 
+ident_label <- c("-1.8" = "Low identification \n (1 SD below)", 
                  "0" = "Average identification",
-                 "1.42" = "High identificatiion \n(1 SD above)")
+                 "1.8" = "High identificatiion \n(1 SD above)")
 ```
 
 ```{r three-way plot color}
@@ -328,67 +461,7 @@ ggplot(effects_threeway, aes(MFQSelf_c,
        y = "MFQ responses for target")
 ```
 
-## Main effect of ingroup identification
-
-```{r main effect ident plot set-up, include = FALSE}
-#information for plot of main effect of in-group identification
-effects_ident_main <- effect(term = "MFQSelf_c:ident_c", 
-                             xlevels = list(ident_c = c(-1.42, 0, 1.42)), 
-                             mod = Model_Pro_random_effects)
-
-effects_ident_main <- as.data.frame(effects_ident_main)
-
-effects_ident_main$Identification <- as.factor(effects_ident_main$ident_c)
-```
-
-```{r main effect ident plot}
-ggplot(effects_ident_main, aes(MFQSelf_c, 
-                               fit, 
-                               group = Identification, 
-                               color = Identification)) +
-  geom_smooth(method = "lm") +
-  scale_color_discrete("Identification", breaks = c(-1.42, 0, 1.42), 
-                       labels = c("Weak identification \n (1 SD below)", 
-                                  "Average identification", 
-                                  "High identification \n (1 SD above)")) +
-  theme_minimal() +
-  labs(title = "Trending main effect of projection by in-group identification",
-       x = "MFQ respones for self",
-       y = "MFQ responses for target")
-
-
-```
-
-```{r main effect ident plot BW}
-trace(grDevices:::png, quote({
-  if (missing(type) && missing(antialias)) {
-    type <- "cairo-png"
-    antialias <- "subpixel"
-  }
-}), print = FALSE)
-
-ggplot(effects_ident_main, aes(MFQSelf_c, 
-                               fit, 
-                               group = Identification, 
-                               color = Identification)) +
-  geom_smooth(method = "lm", se = FALSE, size = .8, colour = "black",
-              aes(linetype = Identification)) +
-  scale_linetype_manual("Identification", breaks = c(-1.42, 0, 1.42), 
-                       labels = c("Low (1 SD below)", 
-                                  "Average", 
-                                  "High (1 SD above)"),
-                       values = c("solid", 
-                                   "twodash", 
-                                   "dotted")) +
-  theme_minimal() +
-  labs(title = "Trending main effect of projection by in-group identification",
-       x = "MFQ respones for self",
-       y = "MFQ responses for target")
-
-#ggsave("figure2.png", device = "png", type = "cairo")
-```
-
-## Main effect of group membership
+## Plot: Main effect group
 
 ```{r main effect group plot set-up, include = FALSE}
 # getting the information for the main effect of group
@@ -432,44 +505,13 @@ ggplot(effects_main_group, aes(MFQSelf_c,
        y = "MFQ responses for target")
 ```
 
-# Alpha for in-group identification
-
-```{r alpha for identification}
-ir_ident <- clean_data %>% 
-  select(subid, IG_Number, IG_Score) %>% 
-  na.omit() %>% 
-  unique() %>% 
-  spread(IG_Number, IG_Score)
-
-ir_ident <- subset(ir_ident, select = -c(subid))
-
-alpha(ir_ident)
-```
-
-# Checking if out-group is significantly different from 0
-
-```{r out diff from zero, echo=FALSE}
-#model
-model_outgroup <- lmer(MFQTarg ~ MFQSelf_c * inoutgroup_effects * PT_effects * 
-                         ident_c + (MFQSelf_c|subid), 
-                       data = clean2, 
-                       na.rm = TRUE, 
-                       subset = (clean2$inoutgroup_effects == -0.5))
-
-#results
-tab_model(model_outgroup,
-          title = "Projection")
-
-#rank deficient so can't include it because doesn't include all the comparisons
-```
-
-# Checking if in-group is significantly different from 0
+### Checking if in-group is significantly different from 0
 
 ```{r in diff from zero, echo=FALSE}
 #model
 model_ingroup <- lmer(MFQTarg ~ MFQSelf_c * inoutgroup_effects * PT_effects * 
-                        ident_c + (MFQSelf_c|subid), data = clean2, na.rm = TRUE, 
-                      subset = (clean2$inoutgroup_effects == 0.5))
+                        ident_c + (MFQSelf_c|subid), data = model_data, 
+                      subset = (model_data$inoutgroup_effects == 0.5))
 
 #results
 tab_model(model_ingroup,
@@ -478,11 +520,30 @@ tab_model(model_ingroup,
 #rank deficient so can't include it because doesn't include all the comparisons
 ```
 
+### Checking if out-group is significantly different from 0
+
+```{r out diff from zero, echo=FALSE}
+#model
+model_outgroup <- lmer(MFQTarg ~ MFQSelf_c * inoutgroup_effects * PT_effects * 
+                         ident_c + (MFQSelf_c|subid), 
+                       data = model_data,
+                       subset = (model_data$inoutgroup_effects == -0.5))
+
+#results
+tab_model(model_outgroup,
+          title = "Projection")
+
+#rank deficient so can't include it because doesn't include all the comparisons
+```
+
 # Perspective taking manipulation check
 
 ```{r pt manipulation check, echo=FALSE}
+mancheck <- clean_data2 %>% 
+  select(subid, Man_PT, PT_effects)
+
 #PT manipulation check
-mancheck_pt <- lm(Man_PT ~ PT_effects, data = clean2)
+mancheck_pt <- lm(Man_PT ~ PT_effects, data = mancheck)
 summary(mancheck_pt)
 confint(mancheck_pt)
 
