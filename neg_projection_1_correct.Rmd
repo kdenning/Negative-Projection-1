@@ -402,6 +402,8 @@ Model_Pro_random_effects <- lmer(MFQTarg ~ MFQSelf_c * inoutgroup_effects *
 #results
 tab_model(Model_Pro_random_effects,
           title = "Projection")
+
+confint(Model_Pro_random_effects)
 ```
 
 ## Interaction plot: identification and group
