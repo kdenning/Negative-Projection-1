@@ -437,12 +437,22 @@ ggplot(effects_threeway, aes(MFQSelf_c,
   scale_color_discrete("Group", breaks = c(-.5, .5), 
                        labels = c("Out-group", "In-group")) +
   theme_minimal() +
-  labs(title = "Projection predicted by in-group identification and group membership",
+  labs(title = "Projection predicted by identification and target group",
        x = "MFQ responses for self",
        y = "MFQ responses for target")
 ```
 
 ```{r three-way plot BW}
+#Function to print plots to pngs for paper
+# ggpreview <- function(...) {
+#   fname <- tempfile(fileext = ".png")
+#   ggsave(filename = fname, ...)
+#   system2("open", fname)
+#   invisible(NULL)
+# }
+
+knitr::opts_chunk$set(fig.width = 8, fig.height = 6) 
+
 ggplot(effects_threeway, aes(MFQSelf_c, 
                              fit, 
                              group = Group, 
@@ -456,9 +466,12 @@ ggplot(effects_threeway, aes(MFQSelf_c,
                        values = c("solid", 
                                    "dashed")) +
   theme_minimal() +
-  labs(title = "Projection predicted by in-group identification and group membership",
+  labs(title = "Projection predicted by identification and target group",
        x = "MFQ responses for self",
        y = "MFQ responses for target")
+
+
+#ggpreview(width = 8, height = 6, units = "in")
 ```
 
 ## Plot: Main effect group
@@ -483,12 +496,14 @@ ggplot(effects_main_group, aes(MFQSelf_c,
   scale_color_discrete("Group", breaks = c(-.5, .5), 
                        labels = c("Out-group", "In-group")) +
   theme_minimal() +
-  labs(title = "Projection predicted by group membership",
+  labs(title = "Projection predicted by target group",
        x = "MFQ responses for self",
        y = "MFQ responses for target")
 ```
 
 ```{r main effect group plot BW}
+knitr::opts_chunk$set(fig.width = 8, fig.height = 6) 
+
 ggplot(effects_main_group, aes(MFQSelf_c, 
                                fit, 
                                group = Group, 
@@ -500,9 +515,11 @@ ggplot(effects_main_group, aes(MFQSelf_c,
                        values = c("solid", 
                                   "dashed")) +
   theme_minimal() +
-  labs(title = "Projection predicted by group membership",
+  labs(title = "Projection predicted by target group",
        x = "MFQ responses for self",
        y = "MFQ responses for target")
+
+# ggpreview(width = 8, height = 6, units = "in")
 ```
 
 ### Checking if in-group is significantly different from 0
